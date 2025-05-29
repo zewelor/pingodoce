@@ -145,12 +145,12 @@ def get_transaction_details(auth_data, transaction_id, store_id = nil)
   headers['Pdapp-Lcid'] = auth_data[:profile]['loyaltyId']
   headers['Pdapp-Hid'] = auth_data[:profile]['householdId']
   headers['Pdapp-Cardnumber'] = auth_data[:profile]['ompdCard'] || ''
-  
+
   # Use the store ID from the transaction if provided
   if store_id
     headers['Pdapp-Storeid'] = store_id.to_s
   end
-  
+
   puts "   Using headers: #{headers.keys.join(', ')}"
   puts "   Store ID: #{headers['Pdapp-Storeid']}"
   puts "   Request URL: #{BASE_URL}/api/v2/user/transactionsHistory/details?id=#{transaction_id}"
@@ -171,7 +171,7 @@ def get_transaction_details(auth_data, transaction_id, store_id = nil)
     # Handle potential encoding issues
     response_body = response.body
     response_body = response_body.force_encoding('UTF-8') if response_body.encoding != Encoding::UTF_8
-    
+
     details = JSON.parse(response_body)
     puts "✅ Transaction details retrieved"
     puts "   Transaction: #{details['transactionNumber']}"
