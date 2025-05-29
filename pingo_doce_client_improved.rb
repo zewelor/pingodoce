@@ -84,7 +84,7 @@ class PingoDoceClient
     # Handle potential encoding issues and clean up the response
     response_body = response.body
     response_body = response_body.force_encoding('UTF-8') if response_body.encoding != Encoding::UTF_8
-    
+
     details = JSON.parse(response_body)
     details = clean_response_data(details)
     log_transaction_details(details)
