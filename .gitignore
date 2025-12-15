@@ -1,6 +1,10 @@
 # Environment variables
 .env
 
+# Data files with PII
+pingodoce.json
+data/
+
 # Ruby
 *.gem
 *.rbc

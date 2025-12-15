@@ -1,0 +1,16 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "bundler/setup"
+require_relative "../lib/pingo_doce"
+
+Dotenv.load
+
+begin
+  PingoDoce.configuration.validate!
+rescue PingoDoce::AuthenticationError => e
+  warn e.message
+  exit 1
+end
+
+PingoDoce::Cli.start(ARGV)

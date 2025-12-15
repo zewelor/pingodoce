@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:github.com)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "Bash(chmod:*)",
+      "Bash(git rm:*)",
+      "Bash(docker compose build:*)",
+      "Bash(docker compose run:*)",
+      "Bash(just stats:*)"
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+services:
+  app:
+    build:
+      context: .
+      target: dev
+    user: "${UID:-1000}:${GID:-1000}"
+    stdin_open: true
+    tty: true
+    volumes:
+      - .:/app:cached
+      - bundler:/bundle
+    env_file:
+      - .env
+    environment:
+      - HOME=/tmp
+
+volumes:
+  bundler:

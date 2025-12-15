@@ -1,0 +1,10 @@
+.git
+.env
+*.json
+data/
+tmp/
+coverage/
+.vscode/
+.idea/
+*.md
+!README.md

@@ -1,0 +1,7 @@
+services:
+  app:
+    build:
+      context: .
+      target: ci
+    env_file:
+      - .env.example

@@ -1,49 +1,136 @@
-# Pingo Doce API Client
+# Pingo Doce CLI
 
-A Ruby client for interacting with the Pingo Doce mobile app API to fetch transaction history and other account data.
+A Ruby CLI application for interacting with the Pingo Doce mobile app API to fetch transaction history, track spending, and analyze shopping patterns.
 
-## Setup
+## Features
 
-1. Install dependencies:
-   ```bash
-   bundle install
-   ```
+- Fetch latest transactions with full product details
+- View transaction history with pagination
+- Spending analytics (by store, day of week, top products)
+- Product price trend analysis
+- Export data to CSV
+- Docker-based development environment
 
-2. Create a `.env` file with your credentials:
+## Requirements
+
+- Docker and Docker Compose (recommended)
+- Or: Ruby 3.3+, Bundler
+
+## Quick Start (Docker)
+
+1. Clone and setup:
    ```bash
    cp .env.example .env
+   # Edit .env with your Pingo Doce credentials
    ```
 
-3. Edit the `.env` file and add your Pingo Doce credentials:
+2. Build and run:
+   ```bash
+   just build
+   just  # Fetches latest transaction (default)
    ```
-   PHONE_NUMBER=+351123456789
-   PASSWORD=your_password_here
-   ```
 
-## Usage
-
-### Simple Fetch Script
-
-Run the simple transaction fetcher:
+## Commands
 
 ```bash
-ruby simple_fetch.rb
+just                    # Fetch latest transaction (default)
+just fetch              # Same as above
+just fetch --no-save    # Fetch without saving to database
+just fetch --json       # Output as JSON
+
+just transactions       # List transactions
+just transactions --page 2 --size 20
+
+just analytics          # Show spending analytics (last 30 days)
+just analytics --days 60
+
+just prices             # Show product price trends
+just prices --product "milk"
+
+just export             # Export data to CSV
+just stats              # Show database statistics
+just version            # Show version
+
+just console            # Interactive Ruby console
+just test               # Run tests
+just lint               # Run linter
+just lint-fix           # Auto-fix linting issues
+just help               # Show CLI help
 ```
 
-This script will:
-- Login to your Pingo Doce account
-- Fetch your transaction history
-- Display the results in JSON format
+## CLI Usage (without Docker)
 
-## Files
+```bash
+bundle install
+bin/cli fetch                    # Fetch latest transaction
+bin/cli transactions --page 1    # List transactions
+bin/cli analytics --days 30      # Spending report
+bin/cli prices                   # Price trends
+bin/cli export                   # Export to CSV
+bin/cli stats                    # Database statistics
+bin/cli version                  # Show version
+bin/cli help                     # Show help
+```
 
-- `simple_fetch.rb` - Simple script for login and transaction fetching
-- `pingodoce_client.rb` - Full-featured client (if available)
-- `.env` - Your credentials (not tracked in git)
-- `.env.example` - Example environment file
+## Development
+
+```bash
+# Build Docker image
+just build
+
+# Install dependencies
+just install
+
+# Run tests
+just test
+
+# Lint code
+just lint
+just lint-fix
+
+# Security audit
+just audit
+
+# Interactive console
+just console
+```
+
+## Project Structure
+
+```
+lib/
+  pingo_doce.rb           # Main module with zeitwerk
+  pingo_doce/
+    version.rb            # Version constant
+    configuration.rb      # Configuration object
+    errors.rb             # Exception hierarchy
+    client.rb             # API client
+    analytics.rb          # Analytics and persistence
+    cli.rb                # Thor CLI
+bin/
+  cli                     # Entry point
+spec/                     # RSpec tests
+data/                     # Transaction data (gitignored)
+```
+
+## Configuration
+
+Environment variables (set in `.env`):
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `PHONE_NUMBER` | Yes | - | Your Pingo Doce phone number |
+| `PASSWORD` | Yes | - | Your Pingo Doce password |
+| `DATA_DIR` | No | `./data` | Directory for storing analytics data |
+| `LOG_LEVEL` | No | `info` | Logging level (debug, info, warn, error) |
+| `DEBUG` | No | `false` | Enable debug mode |
 
 ## Security
 
 - Never commit your `.env` file to version control
-- The `.env` file is already included in `.gitignore`
-- Keep your credentials secure
+- Data files are stored in `data/` (gitignored)
+- Credentials are loaded from environment variables
+
+## License
+
+MIT

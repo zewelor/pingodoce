@@ -1,0 +1,21 @@
+{
+  "TXN001": {
+    "transactionId": "TXN001",
+    "transactionDate": "2024-01-15",
+    "storeName": "Pingo Doce Lisboa",
+    "storeId": "STORE001",
+    "total": 45.50,
+    "totalItems": 10,
+    "products": [
+      {
+        "productId": "P001",
+        "name": "Milk 1L",
+        "category": "Dairy",
+        "brand": "Mimosa",
+        "purchaseQuantity": 2,
+        "purchasePrice": 1.29,
+        "totalAmount": 2.58
+      }
+    ]
+  }
+}
