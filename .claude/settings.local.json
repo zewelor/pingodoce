@@ -22,7 +22,9 @@
       "Bash(do echo \"$line\")",
       "Bash(done)",
       "WebSearch",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:docs.claude.com)"
     ]
   }
 }
