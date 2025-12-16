@@ -6,4 +6,6 @@ module PingoDoce
   class APIError < Error; end
   class ConfigurationError < Error; end
   class NotAuthenticatedError < AuthenticationError; end
+  class DatabaseError < Error; end
+  class StorageError < Error; end
 end

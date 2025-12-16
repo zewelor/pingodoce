@@ -13,7 +13,8 @@ module PingoDoce
     ENDPOINTS = {
       login: "/api/v2/identity/onboarding/login",
       transactions: "/api/v2/user/transactionsHistory",
-      transaction_details: "/api/v2/user/transactionsHistory/details"
+      transaction_details: "/api/v2/user/transactionsHistory/details",
+      product_search: "/api/v2/catalog/search/products"
     }.freeze
 
     BASE_HEADERS = {
@@ -33,6 +34,7 @@ module PingoDoce
     end
 
     def login
+      PingoDoce.configuration.validate!
       log_info "Logging in..."
 
       response = make_request(:post, ENDPOINTS[:login],
@@ -85,6 +87,52 @@ module PingoDoce
         summary: clean_response_data(transaction),
         details: details
       }
+    end
+
+    def search_products(query, store_id:, page: 1, size: DEFAULT_PAGE_SIZE)
+      ensure_authenticated!
+      log_info "Searching products: '#{query}' (store: #{store_id}, page: #{page})..."
+
+      response = make_request(:post, ENDPOINTS[:product_search],
+        body: {storeId: store_id, text: query, page: page, size: size}.to_json,
+        headers: authenticated_headers(store_id))
+
+      result = JSON.parse(response.body)
+      log_info "Found #{result["totalHits"]} products"
+      result
+    end
+
+    def lookup_barcode(ean, store_id:)
+      ensure_authenticated!
+      log_info "Looking up barcode: #{ean}..."
+
+      response = make_request(:post, ENDPOINTS[:product_search],
+        body: {storeId: store_id, barcode: ean, page: 1, size: 1}.to_json,
+        headers: authenticated_headers(store_id))
+
+      result = JSON.parse(response.body)
+      documents = result["documents"] || []
+
+      if documents.any?
+        log_info "Found product: #{documents.first["name"]}"
+        documents.first
+      else
+        log_info "Product not found for barcode: #{ean}"
+        nil
+      end
+    end
+
+    def fetch_product_by_code(product_code, store_id:)
+      ensure_authenticated!
+
+      response = make_request(:post, ENDPOINTS[:product_search],
+        body: {storeId: store_id, text: product_code.to_s, page: 1, size: 10}.to_json,
+        headers: authenticated_headers(store_id))
+
+      result = JSON.parse(response.body)
+      documents = result["documents"] || []
+
+      documents.find { |p| p["productInternalCode"].to_s == product_code.to_s }
     end
 
     def authenticated?

@@ -23,15 +23,23 @@ RSpec.configure do |config|
 
   config.before do
     PingoDoce.reset_configuration!
+    PingoDoce::Database.reset!
     allow(ENV).to receive(:fetch).and_call_original
     allow(ENV).to receive(:fetch).with("PHONE_NUMBER", anything).and_return("+351123456789")
     allow(ENV).to receive(:fetch).with("PASSWORD", anything).and_return("testpassword")
     allow(ENV).to receive(:fetch).with("DATA_DIR", anything).and_return("tmp/test_data")
+    allow(ENV).to receive(:fetch).with("DEFAULT_STORE_ID", anything).and_return("17")
     allow(ENV).to receive(:fetch).with("TIMEOUT", anything).and_return("15")
     allow(ENV).to receive(:fetch).with("LOG_LEVEL", anything).and_return("error")
   end
 
+  # Setup database for specs that need it
+  config.before(:each, :db) do
+    PingoDoce::Database.setup!
+  end
+
   config.after do
+    PingoDoce::Database.reset!
     FileUtils.rm_rf("tmp/test_data") if Dir.exist?("tmp/test_data")
   end
 end

@@ -1,0 +1,397 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Health Report Generator
+# Generates raw health analysis data from Pingo Doce purchase history
+# Run periodically (weekly/monthly) to track dietary patterns
+#
+# Usage:
+#   bin/health_report                    # Output to stdout
+#   bin/health_report > reports/weekly.json
+#   bin/health_report --format md        # Markdown format
+#   bin/health_report --days 30          # Last 30 days only
+
+require "bundler/setup"
+require "json"
+require "optparse"
+require_relative "../lib/pingo_doce"
+
+class HealthReportGenerator
+  PROTEIN_KEYWORDS = %w[
+    proteic protein tofu seitan skyr yopro goactive ovo egg quark
+  ].freeze
+
+  FERMENTED_KEYWORDS = %w[
+    kefir kombucha kimchi chucrute ferm iogurte yogurt
+  ].freeze
+
+  LEGUME_KEYWORDS = %w[
+    grão hummus lentilha feijão tremoço fava ervilha
+  ].freeze
+
+  OMEGA3_KEYWORDS = %w[
+    chia linhaça linhaca nozes cânhamo canhamo
+  ].freeze
+
+  GREEN_KEYWORDS = %w[
+    espinafre brocol couve kale rucula agiao alface
+  ].freeze
+
+  BERRY_KEYWORDS = %w[
+    mirtilo framboesa amora morango berry silvestres
+  ].freeze
+
+  SWEETS_KEYWORDS = %w[
+    chocolate bombom bolacha gomas milka kinder haribo
+    croissant donut wafer cookie candy
+  ].freeze
+
+  def initialize(db_path:, days: nil)
+    @db = Sequel.connect("sqlite://#{db_path}")
+    @days = days
+    @date_filter = days ? "AND pu.purchase_date >= date('now', '-#{days} days')" : ""
+  end
+
+  def generate
+    {
+      generated_at: Time.now.iso8601,
+      period: period_info,
+      summary: summary_stats,
+      categories: {
+        protein: analyze_category(PROTEIN_KEYWORDS, "Protein Sources"),
+        fermented: analyze_category(FERMENTED_KEYWORDS, "Fermented/Probiotic"),
+        legumes: analyze_category(LEGUME_KEYWORDS, "Legumes & Fiber"),
+        omega3_plant: analyze_category(OMEGA3_KEYWORDS, "Plant Omega-3 (ALA)"),
+        greens: analyze_category(GREEN_KEYWORDS, "Green Leafy Vegetables"),
+        berries: analyze_category(BERRY_KEYWORDS, "Berries & Antioxidants"),
+        sweets: analyze_category(SWEETS_KEYWORDS, "Sweets & Processed")
+      },
+      top_products: top_products(25),
+      fresh_produce: fresh_produce_analysis,
+      health_scores: calculate_health_scores,
+      recommendations: generate_recommendations,
+      trends: weekly_trends
+    }
+  end
+
+  private
+
+  def period_info
+    result = @db.fetch(<<~SQL).first
+      SELECT
+        MIN(purchase_date) as start_date,
+        MAX(purchase_date) as end_date,
+        COUNT(DISTINCT transaction_id) as transactions,
+        COUNT(DISTINCT product_id) as unique_products
+      FROM purchases pu
+      WHERE 1=1 #{@date_filter}
+    SQL
+
+    {
+      days_analyzed: @days || "all",
+      start_date: result[:start_date],
+      end_date: result[:end_date],
+      transactions: result[:transactions],
+      unique_products: result[:unique_products]
+    }
+  end
+
+  def summary_stats
+    result = @db.fetch(<<~SQL).first
+      SELECT
+        COUNT(DISTINCT pu.transaction_id) as transaction_count,
+        ROUND(SUM(t.total), 2) as total_spent,
+        COUNT(DISTINCT pu.product_id) as unique_products,
+        SUM(pu.quantity) as total_items
+      FROM purchases pu
+      JOIN transactions t ON pu.transaction_id = t.id
+      WHERE 1=1 #{@date_filter}
+    SQL
+
+    {
+      transactions: result[:transaction_count],
+      total_spent_eur: result[:total_spent],
+      unique_products: result[:unique_products],
+      total_items: result[:total_items].to_f.round(0)
+    }
+  end
+
+  def analyze_category(keywords, name)
+    pattern = keywords.map { |k| "LOWER(p.name) LIKE '%#{k}%'" }.join(" OR ")
+
+    results = @db.fetch(<<~SQL).all
+      SELECT
+        p.name,
+        COUNT(*) as purchase_count,
+        SUM(pu.quantity) as total_quantity,
+        ROUND(SUM(pu.total), 2) as total_spent
+      FROM purchases pu
+      JOIN products p ON pu.product_id = p.id
+      WHERE (#{pattern}) #{@date_filter}
+      GROUP BY p.id
+      ORDER BY purchase_count DESC
+      LIMIT 15
+    SQL
+
+    total_purchases = results.sum { |r| r[:purchase_count] }
+
+    {
+      name: name,
+      total_purchases: total_purchases,
+      total_spent: results.sum { |r| r[:total_spent].to_f }.round(2),
+      products: results.map do |r|
+        {
+          name: r[:name],
+          count: r[:purchase_count],
+          quantity: r[:total_quantity].to_f.round(1)
+        }
+      end
+    }
+  end
+
+  def top_products(limit)
+    @db.fetch(<<~SQL).all
+      SELECT
+        p.name,
+        COUNT(*) as purchase_count,
+        SUM(pu.quantity) as total_quantity
+      FROM purchases pu
+      JOIN products p ON pu.product_id = p.id
+      WHERE 1=1 #{@date_filter}
+      GROUP BY p.id
+      ORDER BY purchase_count DESC
+      LIMIT #{limit}
+    SQL
+  end
+
+  def fresh_produce_analysis
+    vegetables = @db.fetch(<<~SQL).all
+      SELECT p.name, COUNT(*) as count
+      FROM purchases pu
+      JOIN products p ON pu.product_id = p.id
+      WHERE LOWER(p.name) LIKE '%kg%'
+        AND (
+          LOWER(p.name) LIKE '%piment%' OR
+          LOWER(p.name) LIKE '%cenour%' OR
+          LOWER(p.name) LIKE '%curgete%' OR
+          LOWER(p.name) LIKE '%cebola%' OR
+          LOWER(p.name) LIKE '%tomate%' OR
+          LOWER(p.name) LIKE '%brocol%' OR
+          LOWER(p.name) LIKE '%couve%' OR
+          LOWER(p.name) LIKE '%beringela%' OR
+          LOWER(p.name) LIKE '%pepino%' OR
+          LOWER(p.name) LIKE '%alho%' OR
+          LOWER(p.name) LIKE '%cogumelo%'
+        )
+        #{@date_filter}
+      GROUP BY p.id
+      ORDER BY count DESC
+      LIMIT 10
+    SQL
+
+    fruits = @db.fetch(<<~SQL).all
+      SELECT p.name, COUNT(*) as count
+      FROM purchases pu
+      JOIN products p ON pu.product_id = p.id
+      WHERE LOWER(p.name) LIKE '%kg%'
+        AND (
+          LOWER(p.name) LIKE '%banana%' OR
+          LOWER(p.name) LIKE '%maçã%' OR
+          LOWER(p.name) LIKE '%laranja%' OR
+          LOWER(p.name) LIKE '%limão%' OR
+          LOWER(p.name) LIKE '%kiwi%' OR
+          LOWER(p.name) LIKE '%abacate%' OR
+          LOWER(p.name) LIKE '%manga%' OR
+          LOWER(p.name) LIKE '%mirtilo%'
+        )
+        #{@date_filter}
+      GROUP BY p.id
+      ORDER BY count DESC
+      LIMIT 10
+    SQL
+
+    {
+      vegetables: vegetables,
+      fruits: fruits,
+      vegetable_variety: vegetables.length,
+      fruit_variety: fruits.length
+    }
+  end
+
+  def calculate_health_scores
+    categories = {
+      protein: analyze_category(PROTEIN_KEYWORDS, "")[:total_purchases],
+      fermented: analyze_category(FERMENTED_KEYWORDS, "")[:total_purchases],
+      legumes: analyze_category(LEGUME_KEYWORDS, "")[:total_purchases],
+      omega3: analyze_category(OMEGA3_KEYWORDS, "")[:total_purchases],
+      greens: analyze_category(GREEN_KEYWORDS, "")[:total_purchases],
+      berries: analyze_category(BERRY_KEYWORDS, "")[:total_purchases],
+      sweets: analyze_category(SWEETS_KEYWORDS, "")[:total_purchases]
+    }
+
+    total = categories.values.sum.to_f
+    return {} if total == 0
+
+    # Scoring: higher is better for healthy categories, lower for sweets
+    {
+      protein_score: score_percentage(categories[:protein], total, target: 15),
+      fermented_score: score_percentage(categories[:fermented], total, target: 10),
+      legume_score: score_percentage(categories[:legumes], total, target: 10),
+      omega3_score: score_percentage(categories[:omega3], total, target: 5),
+      greens_score: score_percentage(categories[:greens], total, target: 10),
+      berry_score: score_percentage(categories[:berries], total, target: 5),
+      sweets_score: 100 - score_percentage(categories[:sweets], total, target: 5),
+      overall_health_score: calculate_overall_score(categories, total)
+    }
+  end
+
+  def score_percentage(value, total, target:)
+    actual = (value / total * 100).round(1)
+    [(actual / target * 100), 100].min.round(0)
+  end
+
+  def calculate_overall_score(categories, total)
+    weights = {
+      protein: 0.20,
+      fermented: 0.15,
+      legumes: 0.15,
+      omega3: 0.15,
+      greens: 0.15,
+      berries: 0.10,
+      sweets: -0.10  # negative weight for sweets
+    }
+
+    score = 50  # baseline
+
+    weights.each do |cat, weight|
+      pct = categories[cat] / total * 100
+      score += (pct * weight).round(0)
+    end
+
+    score.clamp(0, 100)
+  end
+
+  def generate_recommendations
+    scores = calculate_health_scores
+    recs = []
+
+    if scores[:omega3_score].to_i < 50
+      recs << {
+        priority: 1,
+        category: "omega3",
+        issue: "Low plant-based omega-3 intake",
+        action: "Increase linhaca, chia, nozes, sementes de canhamo. Consider algae EPA/DHA supplement."
+      }
+    end
+
+    if scores[:greens_score].to_i < 50
+      recs << {
+        priority: 2,
+        category: "greens",
+        issue: "Low green leafy vegetable intake",
+        action: "Add couve kale, espinafres, rucula to weekly shopping."
+      }
+    end
+
+    if scores[:berry_score].to_i < 50
+      recs << {
+        priority: 3,
+        category: "berries",
+        issue: "Low berry/antioxidant intake",
+        action: "Add mirtilos, framboesas (frozen ok) 2-3x per week."
+      }
+    end
+
+    if scores[:sweets_score].to_i < 70
+      recs << {
+        priority: 4,
+        category: "sweets",
+        issue: "High processed sweets intake",
+        action: "Replace with 85%+ dark chocolate, fruit, or protein bars."
+      }
+    end
+
+    recs
+  end
+
+  def weekly_trends
+    @db.fetch(<<~SQL).all
+      SELECT
+        strftime('%Y-W%W', purchase_date) as week,
+        COUNT(DISTINCT transaction_id) as transactions,
+        ROUND(SUM(total), 2) as spent,
+        COUNT(DISTINCT product_id) as unique_products
+      FROM purchases pu
+      WHERE 1=1 #{@date_filter}
+      GROUP BY week
+      ORDER BY week DESC
+      LIMIT 12
+    SQL
+  end
+end
+
+# CLI
+options = {format: "json", days: nil}
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: bin/health_report [options]"
+
+  opts.on("-f", "--format FORMAT", "Output format: json, md") do |f|
+    options[:format] = f
+  end
+
+  opts.on("-d", "--days DAYS", Integer, "Analyze last N days only") do |d|
+    options[:days] = d
+  end
+
+  opts.on("-h", "--help", "Show help") do
+    puts opts
+    exit
+  end
+end.parse!
+
+# Determine database path
+data_dir = ENV.fetch("DATA_DIR", "./data")
+db_path = File.join(data_dir, "pingodoce.db")
+
+unless File.exist?(db_path)
+  warn "Database not found: #{db_path}"
+  exit 1
+end
+
+generator = HealthReportGenerator.new(db_path: db_path, days: options[:days])
+report = generator.generate
+
+case options[:format]
+when "json"
+  puts JSON.pretty_generate(report)
+when "md"
+  # Markdown output
+  puts "# Health Report - #{report[:generated_at]}"
+  puts
+  puts "## Period"
+  puts "- Days: #{report[:period][:days_analyzed]}"
+  puts "- Transactions: #{report[:period][:transactions]}"
+  puts "- Unique products: #{report[:period][:unique_products]}"
+  puts
+  puts "## Health Scores"
+  report[:health_scores].each do |key, value|
+    puts "- #{key}: #{value}%"
+  end
+  puts
+  puts "## Recommendations"
+  report[:recommendations].each do |rec|
+    puts "### Priority #{rec[:priority]}: #{rec[:category].upcase}"
+    puts "- Issue: #{rec[:issue]}"
+    puts "- Action: #{rec[:action]}"
+    puts
+  end
+  puts
+  puts "## Top Products"
+  report[:top_products].first(10).each_with_index do |p, i|
+    puts "#{i + 1}. #{p[:name]} (#{p[:purchase_count]}x)"
+  end
+else
+  warn "Unknown format: #{options[:format]}"
+  exit 1
+end

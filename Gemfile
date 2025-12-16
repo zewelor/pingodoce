@@ -2,11 +2,15 @@
 
 source "https://rubygems.org"
 
-# Core - niezbędne
+# Core
 gem "zeitwerk"    # autoloading
 gem "thor"        # CLI
 gem "httparty"    # HTTP client
 gem "dotenv"      # env vars
+
+# Database
+gem "sequel"      # ORM
+gem "sqlite3"     # SQLite adapter
 
 # Development
 group :development do

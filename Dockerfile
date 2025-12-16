@@ -8,24 +8,23 @@ ENV BUNDLE_WITHOUT=
 
 RUN gem update --system && gem install bundler:2.5.0
 
-ARG RUNTIME_PACKAGES=""
-RUN apk add --no-cache ${RUNTIME_PACKAGES}
+# Runtime packages for SQLite
+RUN apk add --no-cache sqlite-libs
 
 WORKDIR /app
 
 # Development stage
 FROM base AS dev
 
-ARG DEV_PACKAGES="build-base git yaml-dev"
-RUN apk add --no-cache ${DEV_PACKAGES}
+# Build packages including SQLite dev libraries
+RUN apk add --no-cache build-base git yaml-dev sqlite-dev
 
-RUN mkdir -p /bundle && chown -R nobody:nobody /bundle
+RUN mkdir -p /bundle && chmod 777 /bundle
 
 # CI stage
 FROM base AS ci
 
-ARG DEV_PACKAGES="build-base git yaml-dev"
-RUN apk add --no-cache ${DEV_PACKAGES}
+RUN apk add --no-cache build-base git yaml-dev sqlite-dev
 
 COPY Gemfile Gemfile.lock ./
 
@@ -40,8 +39,7 @@ COPY . .
 # Live builder stage
 FROM base AS live_builder
 
-ARG DEV_PACKAGES="build-base git yaml-dev"
-RUN apk add --no-cache ${DEV_PACKAGES}
+RUN apk add --no-cache build-base git yaml-dev sqlite-dev
 
 COPY Gemfile Gemfile.lock ./
 

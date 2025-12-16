@@ -4,17 +4,23 @@ require "logger"
 
 module PingoDoce
   class Configuration
-    attr_accessor :phone_number, :password, :data_dir, :timeout, :logger
+    attr_accessor :phone_number, :password, :data_dir, :timeout, :logger, :default_store_id
 
     DEFAULT_TIMEOUT = 15
     DEFAULT_DATA_DIR = "data"
+    DEFAULT_STORE_ID = 17  # Porto Santo Praia Dourada
 
     def initialize
       @phone_number = ENV.fetch("PHONE_NUMBER", nil)
       @password = ENV.fetch("PASSWORD", nil)
       @data_dir = ENV.fetch("DATA_DIR", DEFAULT_DATA_DIR)
       @timeout = ENV.fetch("TIMEOUT", DEFAULT_TIMEOUT).to_i
+      @default_store_id = ENV.fetch("DEFAULT_STORE_ID", DEFAULT_STORE_ID).to_i
       @logger = build_logger
+    end
+
+    def database_url
+      @database_url ||= "sqlite://#{File.expand_path(data_dir)}/pingodoce.db"
     end
 
     def validate!

@@ -10,7 +10,19 @@
       "Bash(git rm:*)",
       "Bash(docker compose build:*)",
       "Bash(docker compose run:*)",
-      "Bash(just stats:*)"
+      "Bash(just stats:*)",
+      "Bash(just analytics:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker volume rm:*)",
+      "Bash(cat:*)",
+      "Bash(bundle lock:*)",
+      "Bash(just sync:*)",
+      "Bash(python3:*)",
+      "Bash(while read line)",
+      "Bash(do echo \"$line\")",
+      "Bash(done)",
+      "WebSearch",
+      "Bash(sqlite3:*)"
     ]
   }
 }

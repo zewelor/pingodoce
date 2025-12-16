@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-RSpec.describe PingoDoce::Analytics do
+RSpec.describe PingoDoce::Analytics, :db do
   let(:analytics) { described_class.new(data_dir: "tmp/test_data") }
 
   let(:transaction_data) do

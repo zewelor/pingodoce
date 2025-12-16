@@ -65,6 +65,8 @@ module PingoDoce
     desc "sync", "Sync all transactions from API to local database"
     option :pages, type: :numeric, default: 5, desc: "Number of pages to fetch"
     option :size, type: :numeric, default: 20, desc: "Page size"
+    option :enrich, type: :boolean, default: true, desc: "Enrich products with catalog data"
+    option :store, type: :numeric, desc: "Store ID for enrichment (default from config)"
     def sync
       client = Client.new
       client.login
@@ -72,6 +74,7 @@ module PingoDoce
       analytics_service = Analytics.new
       total_synced = 0
       total_skipped = 0
+      last_store_id = options[:store] || PingoDoce.configuration.default_store_id
 
       (1..options[:pages]).each do |page|
         say "Fetching page #{page}...", :cyan
@@ -81,6 +84,7 @@ module PingoDoce
 
         txns.each do |transaction|
           transaction_id = transaction["transactionId"]
+          last_store_id = transaction["storeId"] || last_store_id
 
           if analytics_service.transaction_exists?(transaction_id)
             total_skipped += 1
@@ -92,13 +96,18 @@ module PingoDoce
             analytics_service.save_transaction(transaction, details)
             total_synced += 1
             say "  Synced: #{transaction["transactionDate"]} - #{transaction["storeName"]} - #{transaction["total"]} EUR", :green
-          rescue StandardError => e
+          rescue => e
             say "  Failed to sync #{transaction_id}: #{e.message}", :red
           end
         end
       end
 
       say "\nSync complete! Synced: #{total_synced}, Skipped (already exists): #{total_skipped}", :green
+
+      # Enrich new products
+      if options[:enrich] && total_synced > 0
+        enrich_pending_products(client, last_store_id)
+      end
     rescue AuthenticationError, APIError => e
       say "Error: #{e.message}", :red
       exit 1
@@ -155,7 +164,169 @@ module PingoDoce
       say "PingoDoce CLI v#{VERSION}"
     end
 
+    desc "db_setup", "Create database tables"
+    def db_setup
+      say "Setting up database...", :cyan
+      say "  Database: #{PingoDoce.configuration.database_url}", :cyan
+
+      Database.setup!
+      say "Database tables created successfully!", :green
+    rescue DatabaseError => e
+      say "Database Error: #{e.message}", :red
+      exit 1
+    end
+
+    desc "db_status", "Show database status"
+    def db_status
+      config = PingoDoce.configuration
+
+      say "Database Status:", :cyan
+      say "  Database URL: #{mask_password(config.database_url)}"
+
+      begin
+        db = Database.connection
+        say "  Connection: OK", :green
+
+        if db.table_exists?(:transactions)
+          txn_count = db[:transactions].count
+          product_count = db[:products].count
+          say "  Transactions: #{txn_count}"
+          say "  Products: #{product_count}"
+        else
+          say "  Tables: Not created (run 'db_setup' first)", :yellow
+        end
+      rescue => e
+        say "  Connection: FAILED - #{e.message}", :red
+      end
+    end
+
+    desc "config", "Show current configuration"
+    def config
+      cfg = PingoDoce.configuration
+
+      say "Current Configuration:", :cyan
+      say "  Database: #{mask_password(cfg.database_url)}"
+      say "  Data directory: #{cfg.data_dir}"
+      say "  Phone number: #{cfg.phone_number ? mask_phone(cfg.phone_number) : "Not set"}"
+      say "  Default store ID: #{cfg.default_store_id}"
+      say "  Timeout: #{cfg.timeout}s"
+      say "  Log level: #{ENV.fetch("LOG_LEVEL", "info")}"
+    end
+
+    desc "barcode", "Lookup product by barcode (EAN)"
+    option :store, type: :numeric, desc: "Store ID for catalog lookup (default from config)"
+    option :json, type: :boolean, default: false, desc: "Output as JSON"
+    def barcode(ean)
+      client = Client.new
+      client.login
+
+      store_id = options[:store] || PingoDoce.configuration.default_store_id
+      result = client.lookup_barcode(ean, store_id: store_id)
+
+      if result
+        if options[:json]
+          say JSON.pretty_generate(result)
+        else
+          display_catalog_product(result)
+        end
+      else
+        say "Product not found for EAN: #{ean}", :yellow
+      end
+    rescue AuthenticationError, APIError => e
+      say "Error: #{e.message}", :red
+      exit 1
+    end
+
+    desc "health", "Generate health analysis report"
+    option :days, type: :numeric, desc: "Analyze last N days only"
+    option :json, type: :boolean, default: false, desc: "Output as JSON"
+    def health
+      require_relative "health_analyzer"
+
+      analyzer = HealthAnalyzer.new(days: options[:days])
+      report = analyzer.generate
+
+      if options[:json]
+        say JSON.pretty_generate(report)
+      else
+        display_health_report(report)
+      end
+    end
+
+    desc "enrich_all", "Enrich all products with catalog data (batch)"
+    option :limit, type: :numeric, default: 100, desc: "Max products to process"
+    option :store, type: :numeric, desc: "Store ID (default from config)"
+    option :delay, type: :numeric, default: 0.5, desc: "Delay between API calls (seconds)"
+    def enrich_all
+      client = Client.new
+      client.login
+
+      storage = Storage.new
+      store_id = options[:store] || PingoDoce.configuration.default_store_id
+
+      products = storage.products_needing_enrichment(limit: options[:limit])
+
+      if products.empty?
+        say "No products need enrichment", :yellow
+        return
+      end
+
+      say "Found #{products.length} products to enrich...", :cyan
+
+      enricher = ProductEnricher.new(
+        client: client,
+        storage: storage,
+        store_id: store_id
+      )
+
+      results = enricher.enrich_batch(products, delay: options[:delay])
+
+      say "\nEnrichment complete!", :green
+      say "  Enriched: #{results[:enriched]}"
+      say "  Not found: #{results[:not_found]}"
+      say "  Errors: #{results[:errors]}"
+    rescue AuthenticationError, APIError => e
+      say "Error: #{e.message}", :red
+      exit 1
+    end
+
+    desc "db_import", "Import data from JSON files"
+    option :from, type: :string, default: "data", desc: "Directory with JSON files"
+    def db_import
+      json_dir = options[:from]
+
+      unless File.exist?(File.join(json_dir, "transactions.json"))
+        say "No transactions.json found in #{json_dir}", :red
+        exit 1
+      end
+
+      say "Importing data from #{json_dir}...", :cyan
+
+      importer = JsonImporter.new(logger: PingoDoce.logger)
+      result = importer.import(json_dir: json_dir)
+
+      say "Import complete!", :green
+      say "  Transactions imported: #{result[:transactions]}"
+      say "  Products imported: #{result[:products]}"
+      say "  Skipped (already exists): #{result[:skipped]}"
+    rescue => e
+      say "Import Error: #{e.message}", :red
+      exit 1
+    end
+
     private
+
+    def mask_password(url)
+      return url unless url
+
+      url.gsub(/:[^@:]+@/, ":****@")
+    end
+
+    def mask_phone(phone)
+      return phone unless phone && phone.length > 6
+
+      "#{phone[0..5]}****#{phone[-2..]}"
+    end
 
     def display_transaction(transaction)
       say "\nLatest Transaction:", :cyan
@@ -221,6 +392,105 @@ module PingoDoce
         say "    Change: #{direction}#{trend[:price_change]} EUR (#{direction}#{trend[:percent_change]}%)"
         say "    Total purchases: #{trend[:total_purchases]}"
       end
+    end
+
+    def display_catalog_product(product)
+      say "\nProduct:", :cyan
+      say "  Name: #{product["name"]}"
+      say "  EAN: #{product["ean"]}" if product["ean"]
+      say "  Price: #{product["storePrice"]} EUR" if product["storePrice"]
+      say "  Brand: #{product.dig("brand", "name")}" if product.dig("brand", "name")
+      say "  Category: #{product["category"]}" if product["category"]
+
+      if product["description"]
+        nutrition = NutritionParser.parse(product["description"])
+
+        if nutrition[:energy_kcal]
+          say "\n  Nutrition (per 100g):", :cyan
+          say "    Energy: #{nutrition[:energy_kcal]} kcal"
+          say "    Fat: #{nutrition[:fat]}g" if nutrition[:fat]
+          say "    Saturated fat: #{nutrition[:saturated_fat]}g" if nutrition[:saturated_fat]
+          say "    Carbohydrates: #{nutrition[:carbohydrates]}g" if nutrition[:carbohydrates]
+          say "    Sugars: #{nutrition[:sugars]}g" if nutrition[:sugars]
+          say "    Fiber: #{nutrition[:fiber]}g" if nutrition[:fiber]
+          say "    Protein: #{nutrition[:protein]}g" if nutrition[:protein]
+          say "    Salt: #{nutrition[:salt]}g" if nutrition[:salt]
+        end
+
+        if nutrition[:ingredients]
+          say "\n  Ingredients:", :cyan
+          say "    #{nutrition[:ingredients][0, 200]}#{"..." if nutrition[:ingredients].length > 200}"
+        end
+      end
+    end
+
+    def enrich_pending_products(client, store_id, limit: 20)
+      storage = Storage.new
+      products = storage.products_needing_enrichment(limit: limit)
+
+      if products.empty?
+        say "\nNo products need enrichment", :cyan
+        return
+      end
+
+      say "\nEnriching #{products.length} products...", :cyan
+
+      enricher = ProductEnricher.new(
+        client: client,
+        storage: storage,
+        store_id: store_id
+      )
+
+      results = enricher.enrich_batch(products, delay: 0.3)
+
+      say "Enrichment: #{results[:enriched]} enriched, #{results[:not_found]} not found", :green
+    end
+
+    def display_health_report(report)
+      say "\n=== Health Report ===", :cyan
+      say "Generated: #{report[:generated_at]}"
+      say "Period: #{report[:period][:days_analyzed]} days"
+      say "Transactions: #{report[:summary][:transactions]}"
+      say "Total spent: #{report[:summary][:total_spent_eur]} EUR"
+
+      say "\n--- Health Scores ---", :cyan
+      scores = report[:health_scores]
+      scores.each do |key, value|
+        color = if value >= 70
+          :green
+        else
+          ((value >= 40) ? :yellow : :red)
+        end
+        say "  #{format_score_name(key)}: #{value}%", color
+      end
+
+      say "\n--- Top Categories ---", :cyan
+      %i[protein fermented legumes nuts_seeds greens vegetables fruits healthy_fats].each do |cat|
+        data = report[:categories][cat]
+        next if data.nil? || data[:total_purchases] == 0
+
+        say "\n#{data[:name]} (#{data[:total_purchases]} purchases):"
+        data[:products].first(5).each do |p|
+          say "  - #{p[:name]} (#{p[:count]}x)"
+        end
+      end
+
+      if report[:recommendations].any?
+        say "\n--- Recommendations ---", :yellow
+        report[:recommendations].each do |rec|
+          say "\n[Priority #{rec[:priority]}] #{rec[:category].upcase}"
+          say "  Issue: #{rec[:issue]}"
+          say "  Action: #{rec[:action]}"
+        end
+      end
+
+      say "\n--- Fresh Produce ---", :cyan
+      say "Vegetable variety: #{report[:fresh_produce][:vegetable_variety]} types"
+      say "Fruit variety: #{report[:fresh_produce][:fruit_variety]} types"
+    end
+
+    def format_score_name(key)
+      key.to_s.tr("_", " ").gsub("score", "").strip.capitalize
     end
   end
 end
