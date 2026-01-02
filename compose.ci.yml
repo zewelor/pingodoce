@@ -1,7 +1,5 @@
 services:
   app:
-    build:
-      context: .
-      target: ci
+    image: image_ci:latest
     env_file:
       - .env.example
