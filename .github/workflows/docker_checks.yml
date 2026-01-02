@@ -38,7 +38,7 @@ jobs:
 
       - name: Run Bundle Audit
         run: |
-          docker compose run --rm app sh -c 'bundle audit'
+          docker compose run --rm app bundle exec bundler-audit check --update
 
       - name: Run Rubocop
         run: |
