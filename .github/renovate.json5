@@ -1,0 +1,69 @@
+{
+  extends: [
+    'config:recommended',
+    ':dependencyDashboard',
+  ],
+  ignorePaths: [
+    '.github/workflows',
+  ],
+  timezone: 'Europe/Warsaw',
+  vulnerabilityAlerts: {
+    enabled: true,
+  },
+  packageRules: [
+    {
+      matchManagers: ['github-actions'],
+      automerge: true,
+      automergeType: 'branch',
+      platformAutomerge: true,
+    },
+    {
+      matchDatasources: [
+        'docker',
+      ],
+      matchUpdateTypes: [
+        'patch',
+      ],
+      matchPackageNames: [
+        'ruby',
+      ],
+      automerge: true,
+      automergeType: 'branch',
+      labels: [
+        'renovate/image-release',
+        'dependency/patch',
+        'automerge',
+      ],
+    },
+    {
+      matchManagers: [
+        'bundler',
+      ],
+      matchUpdateTypes: [
+        'patch',
+        'minor',
+      ],
+      automerge: true,
+      automergeType: 'branch',
+      matchPackageNames: [
+        'lefthook',
+        'rubocop-performance',
+        'ruby-lsp',
+        'amazing_print',
+        'standard',
+      ],
+    },
+    {
+      matchManagers: [
+        'github-actions',
+      ],
+      schedule: [
+        'every weekend',
+      ],
+      labels: [
+        'renovate/github-actions',
+        'dependency/github-actions',
+      ],
+    },
+  ],
+}

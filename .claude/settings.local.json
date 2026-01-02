@@ -24,7 +24,8 @@
       "WebSearch",
       "Bash(sqlite3:*)",
       "WebFetch(domain:docs.anthropic.com)",
-      "WebFetch(domain:docs.claude.com)"
+      "WebFetch(domain:docs.claude.com)",
+      "Bash(git mv:*)"
     ]
   }
 }
