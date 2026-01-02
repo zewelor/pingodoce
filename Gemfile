@@ -3,6 +3,7 @@
 source "https://rubygems.org"
 
 # Core
+gem "logger"      # logging (extracted from stdlib in Ruby 4.0)
 gem "zeitwerk"    # autoloading
 gem "thor"        # CLI
 gem "httparty"    # HTTP client
