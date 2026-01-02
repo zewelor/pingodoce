@@ -6,8 +6,6 @@ FROM ruby:${RUBY_VERSION}-alpine AS base
 ENV BUNDLE_PATH=/bundle
 ENV BUNDLE_WITHOUT=
 
-RUN gem update --system && gem install bundler:2.5.0
-
 # Runtime packages for SQLite
 RUN apk add --no-cache sqlite-libs
 

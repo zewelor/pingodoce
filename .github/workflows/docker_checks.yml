@@ -40,6 +40,14 @@ jobs:
         run: |
           docker compose run --rm app bundle exec bundler-audit check --update
 
+      - name: Run StandardRB
+        run: |
+          docker compose run --rm app bundle exec standardrb
+
+      - name: Run RSpec
+        run: |
+          docker compose run --rm app bundle exec rspec
+
   push_production:
     permissions:
       contents: read
@@ -63,6 +71,7 @@ jobs:
             latest=true
 
       - name: Set up Docker Buildx
+        id: buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry
