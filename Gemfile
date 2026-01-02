@@ -16,6 +16,7 @@ gem "sqlite3"     # SQLite adapter
 group :development do
   gem "standard"  # linting (rubocop wrapper)
   gem "lefthook"  # git hooks
+  gem "bundle-audit"
 end
 
 # Test
