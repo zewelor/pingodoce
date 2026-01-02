@@ -28,7 +28,7 @@ RUN apk add --no-cache build-base git yaml-dev sqlite-dev
 
 COPY Gemfile Gemfile.lock ./
 
-RUN bundle config set --local jobs $(nproc) && \
+RUN bundle config set --local jobs "$(nproc)" && \
     bundle config set --local retry 3 && \
     bundle install && \
     rm -rf /bundle/cache/*.gem && \
@@ -43,7 +43,7 @@ RUN apk add --no-cache build-base git yaml-dev sqlite-dev
 
 COPY Gemfile Gemfile.lock ./
 
-RUN bundle config set --local jobs $(nproc) && \
+RUN bundle config set --local jobs "$(nproc)" && \
     bundle config set --local retry 3 && \
     bundle config set --local without "development test" && \
     bundle install && \
@@ -59,9 +59,8 @@ ENV RUBYOPT="--disable-did_you_mean"
 COPY --from=live_builder /bundle /bundle
 COPY . .
 
-RUN chmod +x bin/cli
-
-RUN apk add --no-cache catatonit
+RUN chmod +x bin/cli && \
+    apk add --no-cache catatonit
 
 ENTRYPOINT ["/usr/bin/catatonit", "--"]
 CMD ["bin/cli"]
