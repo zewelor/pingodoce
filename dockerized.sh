@@ -5,9 +5,9 @@ docker_compose_run_or_exec() {
   shift
 
   if docker compose ps --status running | grep -q "$container"; then
-    docker compose exec "$container" "$@"
+    docker compose --progress quiet exec "$container" "$@"
   else
-    docker compose run --rm "$container" "$@"
+    docker compose --progress quiet run --rm "$container" "$@"
   fi
 }
 
